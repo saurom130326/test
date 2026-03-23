@@ -1,0 +1,7 @@
+[credential "http://14.224.131.103:777"]
+	provider = generic
+[user]
+	name = phamkieutrinh300720044
+	email = phamkieutrinh300720044@gmai.com
+[credential "https://git.v1solution.com"]
+	provider = generic
