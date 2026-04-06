@@ -1,0 +1,140 @@
+<!-- THIS FILE IS A CUSTOM RECEIVER FOR GOOGLE CAST DEVICES-->
+<!-- PUBLISHED TO GITHUB - NOT IN LOCAL USAGE-->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SmartPlayer Custom Receiver</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Load the Cast Receiver Framework (CAF) -->
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        /* The main player element - MUST extend to full screen */
+        cast-media-player {
+            --splash-image: url('https://picsum.photos/1920/1080'); /* Optional splash screen */
+            --progress-color: #FF0000;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* Debug Overlay - Visible on TV so you can see why it fails */
+        #debug {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00FF00; /* Hacker Green */
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            font-size: 14px;
+            width: 80%;
+            max-height: 400px;
+            overflow: hidden;
+            z-index: 9999;
+            display: none; /* Change to 'block' if you want to see logs on TV */
+        }
+    </style>
+</head>
+<body>
+
+<!-- The built-in CAF player UI -->
+<cast-media-player id="player"></cast-media-player>
+
+<!-- Debug logging container -->
+<div id="debug"></div>
+
+<script>
+    // --- LOGGER UTILITY ---
+    // Change this to true to see logs on your TV screen
+    const DEBUG_MODE = true;
+
+    function log(msg) {
+        console.log(msg);
+        if (DEBUG_MODE) {
+            const debugEl = document.getElementById('debug');
+            debugEl.style.display = 'block';
+            const line = document.createElement('div');
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            debugEl.insertBefore(line, debugEl.firstChild);
+        }
+    }
+
+    // --- RECEIVER INITIALIZATION ---
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+
+    // 1. CONFIG: Optimize for HLS (M3U8)
+    const playbackConfig = new cast.framework.PlaybackConfig();
+    playbackConfig.autoResumeDuration = 5;
+
+    // Anti-CORS trick: do not send credentials/cookies with segment requests
+    playbackConfig.segmentRequestCredentials = false;
+    playbackConfig.manifestRequestCredentials = false;
+
+    // 2. INTERCEPTOR: The most powerful part of Custom Receiver
+    // This runs before the video tries to load.
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.LOAD,
+        request => {
+            log("LOAD request received!");
+
+            if (request.media && request.media.contentId) {
+                const url = request.media.contentId;
+                log("Stream URL: " + url);
+
+                // Force content type if missing
+                if (!request.media.contentType) {
+                    request.media.contentType = 'application/x-mpegurl';
+                }
+
+                // Fix mixed content if possible (similar to your Android code)
+                if (url.startsWith('http://')) {
+                     log("Upgrading HTTP to HTTPS...");
+                     request.media.contentId = url.replace('http://', 'https://');
+                }
+            }
+            return request;
+        }
+    );
+
+    // 3. ERROR LISTENER
+    playerManager.addEventListener(
+        cast.framework.events.EventType.ERROR,
+        event => {
+            log("ERROR: " + JSON.stringify(event));
+            // specifically check for CORS or Network errors
+            if (event.detailedErrorCode) {
+                log("Detailed Error Code: " + event.detailedErrorCode);
+            }
+        }
+    );
+
+    // 4. PLAYER STATE LISTENER
+    playerManager.addEventListener(
+        cast.framework.events.EventType.PLAYER_STATE_CHANGED,
+        event => {
+            log("State: " + event.playerState);
+        }
+    );
+
+    log("Starting Receiver Manager...");
+
+    // Start the receiver
+    context.start({
+        playbackConfig: playbackConfig,
+        // Keep receiver alive for 5 minutes if idle
+        maxInactivity: 300
+    });
+
+</script>
+</body>
+</html>
